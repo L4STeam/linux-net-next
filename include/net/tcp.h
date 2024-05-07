@@ -1345,6 +1345,7 @@ struct rate_sample {
 	long rtt_us;		/* RTT of last (S)ACKed packet (or -1) */
 	int  losses;		/* number of packets marked lost upon ACK */
 	u32  acked_sacked;	/* number of packets newly (S)ACKed upon ACK */
+	u32  acked_sacked_ce;	/* number of packets ECE-marked upon ACK */
 	u32  prior_in_flight;	/* in flight before this ACK */
 	u32  last_end_seq;	/* end_seq of most recently ACKed packet */
 	bool is_app_limited;	/* is sample from packet with bubble in pipe? */
