@@ -2062,6 +2062,10 @@ static inline int __tcp_mtu_to_mss(struct sock *sk, int pmtu)
 
 	mss_now -= psp_sk_overhead(sk);
 
+	/* Apply MSS ceiling from congestion control module, if any */
+	if (icsk->icsk_ca_ops->mss_ceiling)
+		mss_now = min_t(u32, mss_now, icsk->icsk_ca_ops->mss_ceiling(sk));
+
 	/* Clamp it (mss_clamp does not include tcp options) */
 	if (mss_now > tp->rx_opt.mss_clamp)
 		mss_now = tp->rx_opt.mss_clamp;
@@ -2082,6 +2086,7 @@ int tcp_mtu_to_mss(struct sock *sk, int pmtu)
 	return __tcp_mtu_to_mss(sk, pmtu) -
 	       (tcp_sk(sk)->tcp_header_len - sizeof(struct tcphdr));
 }
+EXPORT_SYMBOL(tcp_mtu_to_mss);
 
 /* Inverse of above */
 int tcp_mss_to_mtu(struct sock *sk, int mss)
@@ -2189,6 +2194,17 @@ unsigned int tcp_current_mss(struct sock *sk)
 
 	return mss_now;
 }
+
+unsigned int tcp_update_mss(struct sock *sk)
+{
+	struct dst_entry *dst = __sk_dst_get(sk);
+	struct tcp_sock *tp = tcp_sk(sk);
+
+	if (!dst)
+		return tp->mss_cache;
+	return tcp_sync_mss(sk, dst_mtu(dst));
+}
+EXPORT_SYMBOL_GPL(tcp_update_mss);
 
 /* RFC2861, slow part. Adjust cwnd, after it was not full during one rto.
  * As additional protections, we do not touch cwnd in retransmission phases,
