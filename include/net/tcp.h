@@ -865,6 +865,7 @@ static inline void tcp_clear_xmit_timers(struct sock *sk)
 
 unsigned int tcp_sync_mss(struct sock *sk, u32 pmtu);
 unsigned int tcp_current_mss(struct sock *sk);
+unsigned int tcp_update_mss_ceiling(struct sock *sk);
 u32 tcp_clamp_probe0_to_user_timeout(const struct sock *sk, u32 when);
 
 u32 tcp_tso_autosize(const struct sock *sk, unsigned int mss_now,
@@ -1432,6 +1433,12 @@ struct tcp_congestion_ops {
 	u32  (*undo_cwnd)(struct sock *sk);
 	/* returns the multiplier used in tcp_sndbuf_expand (optional) */
 	u32 (*sndbuf_expand)(struct sock *sk);
+
+	/*
+	 * Return the maximum value allowed for tp->mss_cache (optional)
+	 * The returned value uses the same units and semantics as mss_cache.
+	 */
+	u32 (*mss_ceiling)(struct sock *sk);
 
 /* control/slow paths put last */
 	/* get info for inet_diag (optional) */

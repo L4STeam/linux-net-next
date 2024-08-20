@@ -2147,6 +2147,21 @@ unsigned int tcp_sync_mss(struct sock *sk, u32 pmtu)
 	mss_now = tcp_mtu_to_mss(sk, pmtu);
 	mss_now = tcp_bound_to_half_wnd(tp, mss_now);
 
+	/*
+	 * Apply an optional MSS ceiling requested by the congestion control
+	 * module. Values below the effective minimum send MSS are clamped.
+	 */
+	if (icsk->icsk_ca_initialized && icsk->icsk_ca_ops->mss_ceiling) {
+		u32 mss_ceiling = icsk->icsk_ca_ops->mss_ceiling(sk);
+
+		if (mss_ceiling && mss_ceiling < mss_now) {
+			u32 min_snd_mss = READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_min_snd_mss) -
+					  (tcp_sk(sk)->tcp_header_len - sizeof(struct tcphdr));
+
+			mss_now = max(mss_ceiling, min_snd_mss);
+		}
+	}
+
 	/* And store cached results */
 	icsk->icsk_pmtu_cookie = pmtu;
 	if (icsk->icsk_mtup.enabled)
@@ -2189,6 +2204,18 @@ unsigned int tcp_current_mss(struct sock *sk)
 
 	return mss_now;
 }
+
+__bpf_kfunc unsigned int tcp_update_mss_ceiling(struct sock *sk)
+{
+	struct inet_connection_sock *icsk = inet_csk(sk);
+
+	if (icsk->icsk_ca_initialized &&
+	    icsk->icsk_ca_ops->mss_ceiling &&
+	    icsk->icsk_pmtu_cookie)
+		return tcp_sync_mss(sk, icsk->icsk_pmtu_cookie);
+	return tcp_sk(sk)->mss_cache;
+}
+EXPORT_SYMBOL_GPL(tcp_update_mss_ceiling);
 
 /* RFC2861, slow part. Adjust cwnd, after it was not full during one rto.
  * As additional protections, we do not touch cwnd in retransmission phases,

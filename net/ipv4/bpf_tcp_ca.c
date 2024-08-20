@@ -195,6 +195,7 @@ BTF_ID_FLAGS(func, tcp_reno_undo_cwnd)
 BTF_ID_FLAGS(func, tcp_slow_start)
 BTF_ID_FLAGS(func, tcp_cong_avoid_ai)
 BTF_ID_FLAGS(func, tcp_tso_autosize)
+BTF_ID_FLAGS(func, tcp_update_mss_ceiling)
 BTF_KFUNCS_END(bpf_tcp_ca_check_kfunc_ids)
 
 static const struct btf_kfunc_id_set bpf_tcp_ca_kfunc_set = {
@@ -290,6 +291,11 @@ static u32 bpf_tcp_ca_tso_segs(struct sock *sk, u32 mss_now)
 	return 0;
 }
 
+static u32 bpf_tcp_ca_mss_ceiling(struct sock *sk)
+{
+	return 0;
+}
+
 static void bpf_tcp_ca_cong_control(struct sock *sk, u32 ack, int flag,
 				    const struct rate_sample *rs)
 {
@@ -322,6 +328,7 @@ static struct tcp_congestion_ops __bpf_ops_tcp_congestion_ops = {
 	.in_ack_event = bpf_tcp_ca_in_ack_event,
 	.pkts_acked = bpf_tcp_ca_pkts_acked,
 	.tso_segs = bpf_tcp_ca_tso_segs,
+	.mss_ceiling = bpf_tcp_ca_mss_ceiling,
 	.cong_control = bpf_tcp_ca_cong_control,
 	.undo_cwnd = bpf_tcp_ca_undo_cwnd,
 	.sndbuf_expand = bpf_tcp_ca_sndbuf_expand,
