@@ -55,6 +55,28 @@ static inline void INET_ECN_xmit_negotiation_ect(struct sock *sk)
 	__INET_ECN_xmit(sk, tcp_ca_ect_1_negotiation(sk));
 }
 
+/**
+ * INET_ECN_xmit_established_ect - set the ECT codepoint after CA init
+ * @sk: TCP socket
+ *
+ * Unlike INET_ECN_xmit_negotiation_ect(), which selects the codepoint
+ * used during ECN negotiation (SYN/SYN-ACK), this helper selects the
+ * ECN codepoint used by the established flow.
+ *
+ * The codepoint is chosen according to TCP_ECN_SEND_ECT_1:
+ * ECT(1) when the bit is set, ECT(0) otherwise.
+ *
+ * This helper does not determine whether ECN should be enabled.
+ * Callers invoke it only after congestion control initialization,
+ * with the congestion control module selecting the codepoint to use.
+ *
+ * This changes the socket TOS/tclass rather than a single packet.
+ */
+static inline void INET_ECN_xmit_established_ect(struct sock *sk)
+{
+	__INET_ECN_xmit(sk, tcp_sk(sk)->ecn_flags & TCP_ECN_SEND_ECT_1);
+}
+
 static inline void tcp_ecn_queue_cwr(struct tcp_sock *tp)
 {
 	/* Do not set CWR if in AccECN mode! */

@@ -240,7 +240,14 @@ void tcp_init_congestion_control(struct sock *sk)
 	tcp_sk(sk)->prior_ssthresh = 0;
 	if (icsk->icsk_ca_ops->init)
 		icsk->icsk_ca_ops->init(sk);
-	if (tcp_ca_needs_ecn(sk))
+	/*
+	 * Select the initial ECN codepoint based on the congestion
+	 * control module flag, while each module is responsible for
+	 * handling fallback cases when negotiation did not succeed.
+	 */
+	if (tcp_ca_needs_accecn(sk))
+		INET_ECN_xmit_established_ect(sk);
+	else if (tcp_ca_needs_ecn(sk))
 		INET_ECN_xmit(sk);
 	else
 		INET_ECN_dontxmit(sk);
@@ -251,12 +258,15 @@ static void tcp_reinit_congestion_control(struct sock *sk,
 					  const struct tcp_congestion_ops *ca)
 {
 	struct inet_connection_sock *icsk = inet_csk(sk);
+	struct tcp_sock *tp = tcp_sk(sk);
 
 	tcp_cleanup_congestion_control(sk);
 	WRITE_ONCE(icsk->icsk_ca_ops, ca);
 	icsk->icsk_ca_setsockopt = 1;
 	memset(icsk->icsk_ca_priv, 0, sizeof(icsk->icsk_ca_priv));
 
+	/* Reset ECT(1) selection before initializing a new CC */
+	tp->ecn_flags &= ~TCP_ECN_SEND_ECT_1;
 	if (ca->flags & TCP_CONG_NEEDS_ECN)
 		INET_ECN_xmit_negotiation_ect(sk);
 	else
