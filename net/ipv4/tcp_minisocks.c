@@ -483,6 +483,8 @@ static void tcp_ecn_openreq_child(struct sock *sk,
 		tp->saw_accecn_opt = treq->saw_accecn_opt;
 		if (treq->accecn_fail_mode & TCP_ACCECN_ACE_FAIL_SEND)
 			tcp_accecn_fail_mode_set(tp, TCP_ACCECN_ACE_FAIL_SEND);
+		if (treq->accecn_fail_mode & TCP_ACCECN_ACE_FAIL_RECV)
+			tcp_accecn_fail_mode_set(tp, TCP_ACCECN_ACE_FAIL_RECV);
 		tp->prev_ecnfield = treq->syn_ect_rcv;
 		tp->accecn_opt_demand = 1;
 		tcp_ecn_received_counters_payload(sk, skb);
@@ -757,18 +759,14 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 					     INET_ECN_MASK;
 
 				tcp_rsk(req)->syn_ect_rcv = ect_rcv;
-				if (tcp_accecn_ace(tcp_hdr(skb)) == 0x0) {
-					u8 fail_mode = TCP_ACCECN_ACE_FAIL_RECV;
-
-					tcp_accecn_fail_mode_set(tcp_sk(sk),
-								 fail_mode);
-				}
+				if (tcp_accecn_ace(tcp_hdr(skb)) == 0x0)
+					tcp_rsk(req)->accecn_fail_mode |= TCP_ACCECN_ACE_FAIL_RECV;
 			}
 			if (!tcp_rtx_synack(sk, req)) {
 				unsigned long expires = jiffies;
 
-				tcp_accecn_ace_fail_send_set_retrans(req,
-								     tcp_sk(sk));
+				if (req->num_retrans > 1 && tcp_rsk(req)->accecn_ok)
+					tcp_rsk(req)->accecn_fail_mode |= TCP_ACCECN_ACE_FAIL_SEND;
 
 				expires += tcp_reqsk_timeout(req);
 				if (!fastopen)
