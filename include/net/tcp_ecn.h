@@ -33,7 +33,7 @@ enum tcp_accecn_option {
 };
 
 /* Apply either ECT(0) or ECT(1) based on TCP_CONG_ECT_1_NEGOTIATION flag */
-static inline void INET_ECN_xmit_ect_1_negotiation(struct sock *sk)
+static inline void INET_ECN_xmit_negotiation_ect(struct sock *sk)
 {
 	__INET_ECN_xmit(sk, tcp_ca_ect_1_negotiation(sk));
 }
@@ -583,7 +583,7 @@ static inline void tcp_ecn_send_synack(struct sock *sk, struct sk_buff *skb)
 		TCP_SKB_CB(skb)->tcp_flags &= ~TCPHDR_ECE;
 	else if (tcp_ca_needs_ecn(sk) ||
 		 tcp_bpf_ca_needs_ecn(sk))
-		INET_ECN_xmit_ect_1_negotiation(sk);
+		INET_ECN_xmit_negotiation_ect(sk);
 
 	if (tp->ecn_flags & TCP_ECN_MODE_ACCECN) {
 		TCP_SKB_CB(skb)->tcp_flags &= ~TCPHDR_ACE;
@@ -618,7 +618,7 @@ static inline void tcp_ecn_send_syn(struct sock *sk, struct sk_buff *skb)
 
 	if (use_ecn) {
 		if (tcp_ca_needs_ecn(sk) || bpf_needs_ecn)
-			INET_ECN_xmit_ect_1_negotiation(sk);
+			INET_ECN_xmit_negotiation_ect(sk);
 
 		TCP_SKB_CB(skb)->tcp_flags |= TCPHDR_ECE | TCPHDR_CWR;
 		if (use_accecn) {
