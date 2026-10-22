@@ -228,7 +228,7 @@ void tcp_assign_congestion_control(struct sock *sk)
 
 	memset(icsk->icsk_ca_priv, 0, sizeof(icsk->icsk_ca_priv));
 	if (ca->flags & TCP_CONG_NEEDS_ECN)
-		INET_ECN_xmit_ect_1_negotiation(sk);
+		INET_ECN_xmit_negotiation_ect(sk);
 	else
 		INET_ECN_dontxmit(sk);
 }
@@ -258,7 +258,7 @@ static void tcp_reinit_congestion_control(struct sock *sk,
 	memset(icsk->icsk_ca_priv, 0, sizeof(icsk->icsk_ca_priv));
 
 	if (ca->flags & TCP_CONG_NEEDS_ECN)
-		INET_ECN_xmit_ect_1_negotiation(sk);
+		INET_ECN_xmit_negotiation_ect(sk);
 	else
 		INET_ECN_dontxmit(sk);
 
