@@ -205,6 +205,7 @@ struct prague {
 	u64 upscaled_alpha;	/* Congestion-estimate EWMA */
 	u64 ai_ack_increase;	/* AI increase per non-CE ACKed MSS */
 	u32 mtu_cache;
+	u32 max_mss;
 	u64 hsrtt_us;
 	u64 frac_cwnd;		/* internal fractional cwnd */
 	u64 rate_bytes;		/* internal pacing rate in bytes */
@@ -407,6 +408,11 @@ static u32 prague_valid_mtu(struct sock *sk, u32 mtu)
 		     tcp_mss_to_mtu(sk, MIN_MSS));
 }
 
+static u32 prague_mss_ceiling(struct sock *sk)
+{
+        return prague_ca(sk)->max_mss;
+}
+
 /* RTT independence will scale the classical 1/W per ACK increase. */
 static void prague_ai_ack_increase(struct sock *sk)
 {
@@ -531,8 +537,8 @@ static void prague_update_alpha(struct sock *sk)
 		mtu = prague_valid_mtu(sk, prague_pacing_rate_to_max_mtu(sk));
 		if (mtu_used != mtu) {
 			ca->frac_cwnd = div_u64(ca->frac_cwnd * mtu_used, mtu);
-			tp->mss_cache_set_by_cca = true;
-			tcp_sync_mss(sk, mtu);
+			ca->max_mss = tcp_mtu_to_mss(sk, mtu);
+			tcp_update_mss(sk);
 			tcp_snd_cwnd_set(tp, prague_frac_cwnd_to_snd_cwnd(sk));
 		}
 	}
@@ -829,6 +835,7 @@ static void prague_init(struct sock *sk)
 	ca->saw_ce = !!tp->delivered_ce;
 
 	ca->mtu_cache = tcp_mss_to_mtu(sk, tp->mss_cache) ?: MTU_SYS;
+	ca->max_mss = tp->mss_cache;
 	// Default as 1us
 	ca->hsrtt_us = tp->srtt_us ? (((u64)tp->srtt_us) << HSRTT_SHIFT) :
 		       (1 << (HSRTT_SHIFT + 3));
@@ -848,6 +855,7 @@ static struct tcp_congestion_ops prague __read_mostly = {
 	.set_state	= prague_state,
 	.get_info	= prague_get_info,
 	.tso_segs	= prague_tso_segs,
+	.mss_ceiling	= prague_mss_ceiling,
 	.flags		= TCP_CONG_NEEDS_ECN |
 			  TCP_CONG_NEEDS_ACCECN |
 			  TCP_CONG_ECT_1_NEGOTIATION |
