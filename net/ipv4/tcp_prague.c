@@ -150,7 +150,7 @@
 
 #define MIN_CWND_RTT		2U
 #define MIN_CWND_VIRT		2U
-#define MIN_MSS			150U
+#define MIN_MSS_SIZE		150U
 #define MINIMUM_RATE		12500ULL	/* Minimum rate: 100kbps */
 #define PRAGUE_ALPHA_BITS	24U
 #define PRAGUE_MAX_ALPHA	BIT_ULL(PRAGUE_ALPHA_BITS)
@@ -204,8 +204,7 @@ struct prague {
 	u64 alpha_stamp;	/* EWMA update timestamp */
 	u64 upscaled_alpha;	/* Congestion-estimate EWMA */
 	u64 ai_ack_increase;	/* AI increase per non-CE ACKed MSS */
-	u32 mtu_cache;
-	u32 max_mss;
+	u32 max_mss;		/* Maximum MSS to be used */
 	u64 hsrtt_us;
 	u64 frac_cwnd;		/* internal fractional cwnd */
 	u64 rate_bytes;		/* internal pacing rate in bytes */
@@ -396,16 +395,17 @@ static u64 prague_frac_cwnd_to_pacing_rate(struct sock *sk)
 	       tcp_mss_to_mtu(sk, tp->mss_cache);
 	if (tp->srtt_us)
 		rate = div64_u64(rate, tp->srtt_us);
-	return max_t(u64, mul_u64_u64_shr(rate, ca->frac_cwnd, CWND_UNIT),
-		     MINIMUM_RATE);
+	return mul_u64_u64_shr(rate, ca->frac_cwnd, CWND_UNIT);
 }
 
-static u32 prague_valid_mtu(struct sock *sk, u32 mtu)
+static u32 prague_mtu_to_mss(struct sock *sk, u32 mtu)
 {
-	struct prague *ca = prague_ca(sk);
+	u32 headers;
 
-	return max_t(u32, min_t(u32, ca->mtu_cache, mtu),
-		     tcp_mss_to_mtu(sk, MIN_MSS));
+	headers = tcp_mss_to_mtu(sk, MIN_MSS_SIZE) - MIN_MSS_SIZE;
+	if (mtu <= headers)
+		return MIN_MSS_SIZE;
+	return max_t(u32, mtu - headers, MIN_MSS_SIZE);
 }
 
 static u32 prague_mss_ceiling(struct sock *sk)
@@ -497,7 +497,7 @@ static void prague_cwnd_changed(struct sock *sk)
 
 static void prague_update_alpha(struct sock *sk)
 {
-	u64 ecn_segs, alpha, mtu, mtu_used;
+	u64 ecn_segs, alpha;
 	struct prague *ca = prague_ca(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
 
@@ -531,20 +531,17 @@ static void prague_update_alpha(struct sock *sk)
 		   min(PRAGUE_MAX_ALPHA << PRAGUE_SHIFT_G, alpha));
 
 	if (prague_is_rtt_indep(sk) && !ca->in_loss) {
-		mtu_used = tcp_mss_to_mtu(sk, tp->mss_cache);
-		mtu = prague_valid_mtu(sk, prague_pacing_rate_to_max_mtu(sk));
-		if (mtu_used != mtu) {
-			ca->frac_cwnd = div_u64(ca->frac_cwnd * mtu_used, mtu);
-			ca->max_mss = tcp_mtu_to_mss(sk, mtu);
-			tcp_update_mss(sk);
+		ca->max_mss = prague_mtu_to_mss(sk, prague_pacing_rate_to_max_mtu(sk));
+		if (ca->max_mss != tp->mss_cache &&
+		    ca->max_mss == tcp_update_mss(sk)) {
+			ca->frac_cwnd = div_u64(ca->frac_cwnd * tp->mss_cache, ca->max_mss);
 
 			u64 new_cwnd = prague_frac_cwnd_to_snd_cwnd(sk);
-
 			if (tcp_snd_cwnd(tp) != new_cwnd) {
 				tcp_snd_cwnd_set(tp, new_cwnd);
 				tp->snd_ssthresh = div_u64(tp->snd_ssthresh *
-							   mtu_used,
-							   mtu);
+							   tp->mss_cache,
+							   ca->max_mss);
 				prague_cwnd_changed(sk);
 			}
 		}
@@ -742,7 +739,9 @@ static void prague_cong_control(struct sock *sk, u32 ack, int flag,
 		} else if (unlikely(!ca->saw_ce) ||
 			   cwnd_bytes > cwnd_bytes_transit) {
 			ca->cwnd_mode = 0;
-			ca->rate_bytes = prague_frac_cwnd_to_pacing_rate(sk);
+			ca->rate_bytes = max_t(u64,
+					       prague_frac_cwnd_to_pacing_rate(sk),
+					       MINIMUM_RATE);
 		}
 	}
 }
@@ -848,7 +847,6 @@ static void prague_init(struct sock *sk)
 	ca->round = 0;
 	ca->saw_ce = !!tp->delivered_ce;
 
-	ca->mtu_cache = tcp_mss_to_mtu(sk, tp->mss_cache) ?: MTU_SYS;
 	ca->max_mss = tp->mss_cache;
 	// Default as 1us
 	ca->hsrtt_us = tp->srtt_us ? (((u64)tp->srtt_us) << HSRTT_SHIFT) :
